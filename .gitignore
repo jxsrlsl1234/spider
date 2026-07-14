@@ -4,3 +4,5 @@ __pycache__/
 venv/
 output/
 .DS_Store
+.cache/
+src/.cache/
