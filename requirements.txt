@@ -1,0 +1,10 @@
+# 核心运行依赖（MVP）
+aiohttp>=3.9,<4.0        # 异步抓取引擎（L1 静态 HTTP：并发、超时、重试、会话复用）
+tldextract>=5.0,<6.0     # Public Suffix List：eTLD+1 域名归并（sub.news.bbc.co.uk → bbc.co.uk）
+
+# 以下为“接口占位 / 生产化”方向的可选依赖（MVP 未强制启用，安装后可开启对应能力）
+# playwright>=1.40        # L2 无头浏览器渲染 + 反爬挑战兜底
+# curl_cffi>=0.6          # L1.5 TLS/HTTP 指纹伪装
+# tldextract>=5.0         # 已纳入核心依赖
+# mysql-connector-python  # 生产：域级 Seed Store 后端
+# pyarrow>=14.0           # 生产：离线层 parquet/Hive 写入

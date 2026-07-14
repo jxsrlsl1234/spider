@@ -1,0 +1,16 @@
+# 扩链演示用高出链 hub（可与 seeds.txt 二选一，或合并进 seeds.txt）
+#
+# HN / Wikipedia / GitHub Explore 外链密；但仍需：
+#   1) TaskScheduler 抓取 → 发布跨域到 SeedCollectMq
+#   2) SeedCollect 消费（演示可加 --min-in-degree 1）
+#   3) LinkScheduler 把新 PROBATION/ACTIVE 且 scheduled=false 的域投递 DataQueue
+#
+# 用法示例：
+#   cp seeds_hub.txt seeds.txt && python -m src.bootstrap
+#   # 或 bootstrap 时改 config.seeds_file
+
+https://news.ycombinator.com/
+https://en.wikipedia.org/wiki/Portal:Computer_science
+https://github.com/explore
+https://realpython.com/
+https://stackoverflow.com/questions

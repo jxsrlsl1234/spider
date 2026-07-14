@@ -1,0 +1,62 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "1 Bootstrap 冷启动",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.bootstrap",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "2 LinkScheduler 常驻",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.workers.link_scheduler",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "3 TaskScheduler 常驻（self-test）",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.workers.task_scheduler",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "args": ["--self-test", "--max-pages", "50"]
+    },
+    {
+      "name": "3 TaskScheduler 常驻（真实抓取）",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.workers.task_scheduler",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "4 SeedCollect 常驻",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.workers.seed_collect",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    }
+  ],
+  "compounds": [
+    {
+      "name": "全套常驻（需先 Bootstrap）",
+      "configurations": [
+        "2 LinkScheduler 常驻",
+        "3 TaskScheduler 常驻（self-test）",
+        "4 SeedCollect 常驻"
+      ],
+      "stopAll": true
+    }
+  ]
+}

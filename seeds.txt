@@ -1,0 +1,13 @@
+# 初始种子（静态文件）
+#
+# 格式：每行一条 URL；以 # 开头为注释。
+# 理想自动化生成管线见 README 与 DESIGN.md §1。
+
+https://news.ycombinator.com/
+https://en.wikipedia.org/wiki/Main_Page
+https://docs.python.org/3/
+https://github.com/
+https://stackoverflow.com/
+https://www.bbc.com/news
+https://arxiv.org/
+https://realpython.com/
