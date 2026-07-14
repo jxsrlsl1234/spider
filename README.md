@@ -21,7 +21,7 @@ cd /path/to/spider          # cwd 必须为项目根（含 seeds.txt、config.py
 
 - Python 3.9+
 - 真实抓取依赖 `aiohttp`；`--self-test` 使用 MockFetcher，无需网络
-- IDE 调试请将 `cwd` 设为 `${workspaceFolder}`（见 [`.vscode/launch.json`](./.vscode/launch.json)）
+- IDE 调试请将工作目录 `cwd` 设为项目根目录
 
 ### 启动顺序
 

@@ -41,6 +41,5 @@ Thumbs.db
 # JetBrains (PyCharm) — machine-local IDE state
 .idea/
 
-# VS Code — keep shared launch.json; ignore the rest of local editor state
-.vscode/*
-!.vscode/launch.json
+# VS Code — machine-local IDE state
+.vscode/

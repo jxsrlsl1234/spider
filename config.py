@@ -1,7 +1,8 @@
 """集中配置。
 
 路径默认相对**当前工作目录（cwd）**。在 IDE 中请将 Run/Debug 的
-cwd 设为项目根（见 `.vscode/launch.json`），否则相对路径会解析失败。
+cwd 设为项目根，否则相对路径会解析失败。
+
 """
 from __future__ import annotations
 
