@@ -1,8 +1,46 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Virtualenv
 .venv/
 venv/
-output/
-.DS_Store
+env/
+
+# Local caches (e.g. tldextract Public Suffix List under .cache/ / src/.cache/)
 .cache/
-src/.cache/
+
+# Runtime artefacts (SeedStore / MQ / ObjectStore mirrors)
+output/
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# JetBrains (PyCharm) — machine-local IDE state
+.idea/
+
+# VS Code — keep shared launch.json; ignore the rest of local editor state
+.vscode/*
+!.vscode/launch.json
