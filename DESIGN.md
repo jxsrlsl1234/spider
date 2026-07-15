@@ -282,7 +282,7 @@ MVP：[已实现] 权重入队 + DataQueue；[未实现] 独立 freshness/polite
 
 | 机制 | 设计 | 状态 |
 |------|------|------|
-| 域级礼貌 | `per_domain_min_interval`；抓取侧 **`max_concurrency_per_host`** 限同站打满连接池 | [部分实现] / [已实现] 单域抓取并发 |
+| 域级礼貌 | DataQueue **按 topic 独立令牌桶**（默认 `consume_rate_per_second` + `domain_qps`）；抓取侧 **`max_concurrency_per_host`**；`per_domain_min_interval` 未接通 | [已实现] 域名出队 QPS + 单域抓取并发；[未实现] 抓取间隔 / robots crawl-delay |
 | URL 去重 | Bloom（概率）+ 精确集合 | [已实现] `src/crawl/dedup.py`（MVP 精确为主，Bloom 可扩展） |
 | 内容去重 | HTML 内容哈希 | [已实现] ContentDedup |
 | 跨 Worker 去重服务 | 独立 Dedup 层 | [未实现] |

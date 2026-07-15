@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Dict
 
 
 @dataclass
@@ -95,7 +96,12 @@ class ObjectStorageConfig:
 
 @dataclass
 class DataQueueConfig:
-    """自研 DataQueue（Redis + HBase）配置。"""
+    """自研 DataQueue（Redis + HBase）配置。
+
+    消费侧按 topic（域名）独立令牌桶限速：
+    - ``consume_rate_per_second``：未单独配置的域名默认 QPS
+    - ``domain_qps``：按可注册域覆盖（如 ``{"arxiv.org": 0.5}``）；``<=0`` 表示暂停出队
+    """
 
     topic_prefix: str = "crawl.link.task"
     base_dir: Path = Path("output/data_queue")
@@ -103,7 +109,9 @@ class DataQueueConfig:
     partition_width: int = 2
     offset_width: int = 10
     buffer_capacity: int = 1000
-    consume_rate_per_second: float = 200.0
+    # 默认 per-domain 出队 QPS（各 topic 独立令牌桶）
+    consume_rate_per_second: float = 2.0
+    domain_qps: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass

@@ -8,17 +8,18 @@ import time
 import uuid
 from collections import deque
 from pathlib import Path
-from typing import Deque, Dict, List, Set
+from typing import Deque, Dict, List, Mapping, Optional, Set
 
 from src.util.logging_conf import get_logger, log
 from src.stores.data_queue.models import SubQueueType
 from src.stores.data_queue.redis_meta import BufferEntry
+from src.stores.data_queue.topic import build_topic, parse_domain
 
 logger = get_logger("file_redis_meta")
 
 
 class FileRedisMetaStore:
-    """MVP 多进程：偏移量/Topic/锁文件持久化到 base_dir。"""
+    """MVP 多进程：偏移量/Topic/锁文件持久化到 base_dir；令牌桶按 topic 独立。"""
 
     def __init__(
         self,
@@ -26,7 +27,9 @@ class FileRedisMetaStore:
         *,
         partition_count: int = 16,
         buffer_capacity: int = 1000,
-        consume_rate_per_second: float = 200.0,
+        consume_rate_per_second: float = 2.0,
+        domain_qps: Optional[Mapping[str, float]] = None,
+        topic_prefix: str = "crawl.link.task",
     ) -> None:
         self._base = Path(base_dir)
         self._base.mkdir(parents=True, exist_ok=True)
@@ -35,11 +38,15 @@ class FileRedisMetaStore:
         self._lock_dir.mkdir(parents=True, exist_ok=True)
         self._partition_count = partition_count
         self._buffer_capacity = buffer_capacity
-        self._rate = consume_rate_per_second
+        self._default_rate = float(consume_rate_per_second)
+        self._domain_qps: Dict[str, float] = {
+            k.lower().strip(): float(v) for k, v in (domain_qps or {}).items()
+        }
+        self._topic_prefix = topic_prefix
         self._buffers: Dict[str, Deque[BufferEntry]] = {}
         self._buffered_keys: Dict[str, Set[str]] = {}
-        self._tokens = consume_rate_per_second
-        self._last_refill = time.monotonic()
+        self._tokens: Dict[str, float] = {}
+        self._last_refill: Dict[str, float] = {}
         # 进程内并发 publish/ack 会同时改 state.json，必须串行
         self._state_mu = threading.Lock()
 
@@ -175,22 +182,55 @@ class FileRedisMetaStore:
         keys.add(entry.row_key)
         return True
 
-    def _refill_tokens(self) -> None:
+    def rate_for_topic(self, topic: str) -> float:
+        try:
+            domain = parse_domain(topic, self._topic_prefix).lower()
+        except ValueError:
+            return self._default_rate
+        if domain in self._domain_qps:
+            return float(self._domain_qps[domain])
+        return self._default_rate
+
+    def set_domain_qps(self, domain: str, qps: float) -> None:
+        key = domain.lower().strip()
+        self._domain_qps[key] = float(qps)
+        topic = build_topic(key, self._topic_prefix)
+        if topic in self._tokens:
+            rate = self.rate_for_topic(topic)
+            if rate <= 0:
+                self._tokens[topic] = 0.0
+            else:
+                self._tokens[topic] = min(rate, self._tokens[topic])
+
+    def set_domain_qps_map(self, mapping: Mapping[str, float]) -> None:
+        for domain, qps in mapping.items():
+            self.set_domain_qps(domain, qps)
+
+    def _refill_tokens(self, topic: str) -> None:
+        rate = self.rate_for_topic(topic)
         now = time.monotonic()
-        elapsed = now - self._last_refill
+        if topic not in self._tokens:
+            self._tokens[topic] = 0.0 if rate <= 0 else rate
+            self._last_refill[topic] = now
+            return
+        if rate <= 0:
+            self._tokens[topic] = 0.0
+            self._last_refill[topic] = now
+            return
+        elapsed = now - self._last_refill.get(topic, now)
         if elapsed > 0:
-            self._tokens = min(self._rate, self._tokens + elapsed * self._rate)
-            self._last_refill = now
+            self._tokens[topic] = min(rate, self._tokens[topic] + elapsed * rate)
+            self._last_refill[topic] = now
 
     def pop_buffer(self, topic: str, max_items: int) -> List[BufferEntry]:
         out: List[BufferEntry] = []
-        self._refill_tokens()
+        self._refill_tokens(topic)
         buf = self._buffers.get(topic)
         if not buf:
             return out
-        while buf and len(out) < max_items and self._tokens >= 1.0:
+        while buf and len(out) < max_items and self._tokens.get(topic, 0.0) >= 1.0:
             out.append(buf.popleft())
-            self._tokens -= 1.0
+            self._tokens[topic] = self._tokens.get(topic, 0.0) - 1.0
         return out
 
     def buffer_size(self, topic: str) -> int:

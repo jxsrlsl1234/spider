@@ -130,7 +130,7 @@ src/scheduling/         # LinkScheduler / TaskScheduler
 src/stores/             # SeedStore / offline / object / result_store
 ```
 
-配置：`DataQueueConfig`（`partition_count`、`buffer_capacity`、`consume_rate_per_second` 等）。
+配置：`DataQueueConfig`（`partition_count`、`buffer_capacity`、`consume_rate_per_second` 默认 per-domain QPS、`domain_qps` 按域覆盖等）。消费侧令牌桶按 topic（域名）独立，互不影响。
 
 ---
 

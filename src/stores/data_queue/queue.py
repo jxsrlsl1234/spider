@@ -5,7 +5,7 @@ Topic 由 domain 拼接（如 crawl.link.task.example_com），偏移量/分区/
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional, Protocol
+from typing import List, Mapping, Optional, Protocol
 
 from src.util.logging_conf import get_logger, log
 from src.stores.data_queue.file_redis_meta import FileRedisMetaStore
@@ -61,7 +61,8 @@ class MvpDataQueue:
         partition_width: int = 2,
         offset_width: int = 10,
         buffer_capacity: int = 1000,
-        consume_rate_per_second: float = 200.0,
+        consume_rate_per_second: float = 2.0,
+        domain_qps: Optional[Mapping[str, float]] = None,
         redis_meta: Optional[RedisMetaStore] = None,
         hbase_store: Optional[HBaseMessageStore] = None,
     ) -> None:
@@ -74,6 +75,8 @@ class MvpDataQueue:
             partition_count=partition_count,
             buffer_capacity=buffer_capacity,
             consume_rate_per_second=consume_rate_per_second,
+            domain_qps=domain_qps,
+            topic_prefix=topic_prefix,
         )
         self._hbase: HBaseMessageStore = hbase_store or LocalHBaseMessageStore(
             base, partition_width=partition_width, offset_width=offset_width,
@@ -85,6 +88,16 @@ class MvpDataQueue:
 
     def topic_for_domain(self, domain: str) -> str:
         return build_topic(domain, self._topic_prefix)
+
+    def set_domain_qps(self, domain: str, qps: float) -> None:
+        """运行时覆盖某域名出队 QPS（<=0 暂停该域出队）。"""
+        self._redis.set_domain_qps(domain, qps)
+
+    def set_domain_qps_map(self, mapping: Mapping[str, float]) -> None:
+        self._redis.set_domain_qps_map(mapping)
+
+    def rate_for_domain(self, domain: str) -> float:
+        return self._redis.rate_for_topic(self.topic_for_domain(domain))
 
     def _resolve_topic(self, item: LinkQueueItem, topic: Optional[str]) -> str:
         if topic:

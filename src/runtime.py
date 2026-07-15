@@ -18,6 +18,7 @@ def build_data_queue(config: Config) -> MvpDataQueue:
         offset_width=dq.offset_width,
         buffer_capacity=dq.buffer_capacity,
         consume_rate_per_second=dq.consume_rate_per_second,
+        domain_qps=dq.domain_qps,
     )
 
 

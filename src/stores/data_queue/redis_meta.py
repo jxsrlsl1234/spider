@@ -1,6 +1,7 @@
-"""Redis 元数据层：分布式锁、偏移量、分区分配、内存 Buffer、消费限速。
+"""Redis 元数据层：分布式锁、偏移量、分区分配、内存 Buffer、按域名消费限速。
 
 偏移量、分区轮询、消费位点均按 Topic（domain 独立）隔离。
+消费令牌桶亦按 Topic 独立（默认 QPS + domain_qps 覆盖）。
 MVP 使用 LocalRedisMetaStore（内存模拟）；生产环境替换为真实 Redis 客户端。
 """
 from __future__ import annotations
@@ -9,9 +10,10 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Deque, Dict, List, Optional, Protocol, Set, Tuple
+from typing import Deque, Dict, List, Mapping, Optional, Protocol, Set, Tuple
 
 from src.stores.data_queue.models import QueueMessage, SubQueueType
+from src.stores.data_queue.topic import build_topic, parse_domain
 
 
 @dataclass
@@ -53,20 +55,32 @@ class RedisMetaStore(Protocol):
 
     def release_buffered(self, topic: str, row_key: str) -> None: ...
 
+    def rate_for_topic(self, topic: str) -> float: ...
+
+    def set_domain_qps(self, domain: str, qps: float) -> None: ...
+
+    def set_domain_qps_map(self, mapping: Mapping[str, float]) -> None: ...
+
 
 class LocalRedisMetaStore:
-    """MVP：内存模拟 Redis；partition / produce offset / consume offset 均 per-topic。"""
+    """MVP：内存模拟 Redis；partition / produce offset / consume offset / 令牌桶均 per-topic。"""
 
     def __init__(
         self,
         *,
         partition_count: int = 16,
         buffer_capacity: int = 1000,
-        consume_rate_per_second: float = 200.0,
+        consume_rate_per_second: float = 2.0,
+        domain_qps: Optional[Mapping[str, float]] = None,
+        topic_prefix: str = "crawl.link.task",
     ) -> None:
         self._partition_count = partition_count
         self._buffer_capacity = buffer_capacity
-        self._rate = consume_rate_per_second
+        self._default_rate = float(consume_rate_per_second)
+        self._domain_qps: Dict[str, float] = {
+            k.lower().strip(): float(v) for k, v in (domain_qps or {}).items()
+        }
+        self._topic_prefix = topic_prefix
         self._lock = threading.RLock()
         self._locks: Dict[str, float] = {}
         self._partition_rr: Dict[str, int] = {}
@@ -75,8 +89,8 @@ class LocalRedisMetaStore:
         self._active_topics: Set[str] = set()
         self._buffers: Dict[str, Deque[BufferEntry]] = {}
         self._buffered_keys: Dict[str, Set[str]] = {}
-        self._tokens = consume_rate_per_second
-        self._last_refill = time.monotonic()
+        self._tokens: Dict[str, float] = {}
+        self._last_refill: Dict[str, float] = {}
 
     @property
     def partition_count(self) -> int:
@@ -143,23 +157,58 @@ class LocalRedisMetaStore:
             keys.add(entry.row_key)
             return True
 
-    def _refill_tokens(self) -> None:
+    def rate_for_topic(self, topic: str) -> float:
+        try:
+            domain = parse_domain(topic, self._topic_prefix).lower()
+        except ValueError:
+            return self._default_rate
+        if domain in self._domain_qps:
+            return float(self._domain_qps[domain])
+        return self._default_rate
+
+    def set_domain_qps(self, domain: str, qps: float) -> None:
+        key = domain.lower().strip()
+        with self._lock:
+            self._domain_qps[key] = float(qps)
+            topic = build_topic(key, self._topic_prefix)
+            if topic in self._tokens:
+                rate = self.rate_for_topic(topic)
+                if rate <= 0:
+                    self._tokens[topic] = 0.0
+                else:
+                    self._tokens[topic] = min(rate, self._tokens[topic])
+
+    def set_domain_qps_map(self, mapping: Mapping[str, float]) -> None:
+        for domain, qps in mapping.items():
+            self.set_domain_qps(domain, qps)
+
+    def _refill_tokens(self, topic: str) -> None:
+        rate = self.rate_for_topic(topic)
         now = time.monotonic()
-        elapsed = now - self._last_refill
+        if topic not in self._tokens:
+            # 懒创建：初始填满一桶；qps<=0 表示暂停出队
+            self._tokens[topic] = 0.0 if rate <= 0 else rate
+            self._last_refill[topic] = now
+            return
+        if rate <= 0:
+            self._tokens[topic] = 0.0
+            self._last_refill[topic] = now
+            return
+        elapsed = now - self._last_refill.get(topic, now)
         if elapsed > 0:
-            self._tokens = min(self._rate, self._tokens + elapsed * self._rate)
-            self._last_refill = now
+            self._tokens[topic] = min(rate, self._tokens[topic] + elapsed * rate)
+            self._last_refill[topic] = now
 
     def pop_buffer(self, topic: str, max_items: int) -> List[BufferEntry]:
         out: List[BufferEntry] = []
         with self._lock:
-            self._refill_tokens()
+            self._refill_tokens(topic)
             buf = self._buffers.get(topic)
             if not buf:
                 return out
-            while buf and len(out) < max_items and self._tokens >= 1.0:
+            while buf and len(out) < max_items and self._tokens.get(topic, 0.0) >= 1.0:
                 out.append(buf.popleft())
-                self._tokens -= 1.0
+                self._tokens[topic] = self._tokens.get(topic, 0.0) - 1.0
         return out
 
     def buffer_size(self, topic: str) -> int:

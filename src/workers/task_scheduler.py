@@ -37,6 +37,26 @@ def _handle_stop(signum, frame) -> None:  # noqa: ANN001, ARG001
     log(logger, 20, "worker_stop_signal", signum=signum)
 
 
+def _parse_domain_qps(spec: str) -> Dict[str, float]:
+    """解析 ``domain=qps,...``（如 ``arxiv.org=0.5,python.org=1``）。"""
+    out: Dict[str, float] = {}
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "=" not in part:
+            raise argparse.ArgumentTypeError(f"invalid --domain-qps item: {part!r} (expect domain=qps)")
+        domain, raw = part.split("=", 1)
+        domain = domain.strip().lower()
+        if not domain:
+            raise argparse.ArgumentTypeError(f"empty domain in --domain-qps item: {part!r}")
+        try:
+            out[domain] = float(raw.strip())
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(f"invalid qps in --domain-qps item: {part!r}") from exc
+    return out
+
+
 def _build_mock_pages() -> dict:
     hn = (
         "<html><body><nav><a href='/newest'>new</a></nav>"
@@ -230,6 +250,14 @@ def main(argv: Optional[list] = None) -> int:
         "--connector-limit-per-host", type=int, default=None,
         help="单 host 连接数上限（默认 config.fetch.connector_limit_per_host）",
     )
+    parser.add_argument(
+        "--default-domain-qps", type=float, default=None,
+        help="DataQueue 默认 per-domain 出队 QPS（默认 config.data_queue.consume_rate_per_second）",
+    )
+    parser.add_argument(
+        "--domain-qps", type=str, default=None,
+        help="按域名覆盖出队 QPS，格式 domain=qps,...（如 arxiv.org=0.5,python.org=1）",
+    )
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args(argv)
 
@@ -256,6 +284,10 @@ def main(argv: Optional[list] = None) -> int:
         config.fetch.connector_limit = max(1, args.connector_limit)
     if args.connector_limit_per_host is not None:
         config.fetch.connector_limit_per_host = max(1, args.connector_limit_per_host)
+    if args.default_domain_qps is not None:
+        config.data_queue.consume_rate_per_second = float(args.default_domain_qps)
+    if args.domain_qps is not None:
+        config.data_queue.domain_qps.update(_parse_domain_qps(args.domain_qps))
 
     # 连接池 per-host 不得小于单域任务并发，否则池内排队会变成 ConnectionTimeout
     if config.fetch.connector_limit_per_host < config.fetch.max_concurrency_per_host:
@@ -279,6 +311,8 @@ def main(argv: Optional[list] = None) -> int:
         retry_backoff_seconds=config.fetch.retry_backoff_seconds,
         connector_limit=config.fetch.connector_limit,
         connector_limit_per_host=config.fetch.connector_limit_per_host,
+        default_domain_qps=config.data_queue.consume_rate_per_second,
+        domain_qps=dict(config.data_queue.domain_qps),
         self_test=bool(args.self_test),
     )
 
